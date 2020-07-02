@@ -73,3 +73,11 @@ func (job *Job) run() {
 
 	jobFunction.Call(jobParameters)
 }
+
+func (job *Job) Cancel() {
+	if job.Config.JobType == JOB_ONCE {
+		job.Config.oneOffTimer.Stop()
+	} else {
+		job.Config.repeatTimer.Stop()
+	}
+}

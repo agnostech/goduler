@@ -62,3 +62,15 @@ func (goduler *Goduler) Schedule(config *job.JobConfig, scheduleTime time.Time, 
 
 	return nil
 }
+
+func (goduler *Goduler) cancel(jobId interface{}) error {
+
+	savedJob, ok := goduler.jobs[jobId]
+
+	if !ok {
+		return errors.New("cannot find a saved job by the job id mentioned")
+	}
+
+	savedJob.Cancel()
+	return nil
+}

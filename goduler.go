@@ -28,7 +28,9 @@ type Goduler struct {
 func New(config *GodulerConfig) (*Goduler, error) {
 
 	goduler := &Goduler{
-		config: config,
+		config:      config,
+		definitions: make(map[string]interface{}),
+		jobs:        make(map[interface{}]*job.Job),
 	}
 
 	if config.DBType == Redis {
@@ -60,5 +62,3 @@ func (goduler *Goduler) Schedule(config *job.JobConfig, scheduleTime time.Time, 
 
 	return nil
 }
-
-

@@ -7,8 +7,9 @@ import (
 	"time"
 )
 
-func task() {
+func task(name string) {
 	fmt.Println("This function ran bc")
+	fmt.Println(name)
 }
 
 func main() {
@@ -27,7 +28,7 @@ func main() {
 			UniqueId: 1,
 			JobName: "test-job",
 
-		}, time.Now().Add(1*time.Minute), "name",
+		}, time.Now().Add(1*time.Minute), "vishal",
 	)
 
 	if scheduleErr != nil {

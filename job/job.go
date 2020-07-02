@@ -13,7 +13,7 @@ const (
 type JobConfig struct {
 	UniqueId      interface{}
 	JobName       string
-	isDone        bool
+	IsDone        bool
 	JobType       string
 	maxRetries    int
 	retries       int
@@ -38,7 +38,7 @@ func (job *Job) Schedule(jobTime time.Time, jobData []interface{}) {
 
 		job.run()
 
-		job.Config.isDone = true
+		job.Config.IsDone = true
 	}()
 
 }

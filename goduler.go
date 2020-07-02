@@ -71,6 +71,22 @@ func (goduler *Goduler) cancel(jobId interface{}) error {
 		return errors.New("cannot find a saved job by the job id mentioned")
 	}
 
+	if savedJob.Config.IsDone {
+		//Job is done, nothing to cancel
+		return nil
+	}
+
 	savedJob.Cancel()
+
 	return nil
+}
+
+func (goduler *Goduler) stop() {
+
+	for _, scheduledJob := range goduler.jobs {
+		if !scheduledJob.Config.IsDone {
+			scheduledJob.Cancel()
+		}
+	}
+
 }

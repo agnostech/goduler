@@ -1,6 +1,8 @@
 package goduler
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"github.com/agnostech/goduler/job"
 	"github.com/go-redis/redis/v8"
@@ -14,8 +16,9 @@ const (
 )
 
 type GodulerConfig struct {
-	DBType string
-	DBUri  string
+	DBType     string
+	DBUri      string
+	DBPassword string
 }
 
 type Goduler struct {
@@ -34,11 +37,10 @@ func New(config *GodulerConfig) (*Goduler, error) {
 	}
 
 	if config.DBType == Redis {
-		parsedUrl, parseErr := redis.ParseURL(config.DBUri)
-		if parseErr != nil {
-			return nil, errors.New("cannot parse Redis connection URL")
-		}
-		redisClient := redis.NewClient(parsedUrl)
+		redisClient := redis.NewClient(&redis.Options{
+			Addr:     config.DBUri,
+			Password: config.DBPassword,
+		})
 		goduler.redis = redisClient
 	}
 
@@ -52,13 +54,20 @@ func (goduler *Goduler) Define(jobName string, jobFunction interface{}) {
 func (goduler *Goduler) Schedule(config *job.JobConfig, scheduleTime time.Time, jobData ...interface{}) error {
 
 	newJob := &job.Job{
-		Config: config,
+		Config:      config,
+		RedisClient: goduler.redis,
 	}
 
 	newJob.Config.JobFunction = goduler.definitions[newJob.Config.JobName]
 	goduler.jobs[config.UniqueId] = newJob
 
 	newJob.Schedule(scheduleTime, jobData)
+
+	err := goduler.saveJob(newJob)
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -81,6 +90,17 @@ func (goduler *Goduler) cancel(jobId interface{}) error {
 	return nil
 }
 
+func (goduler *Goduler) saveJob(saveJob *job.Job) error {
+
+	err := saveJob.Save()
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (goduler *Goduler) stop() {
 
 	for _, scheduledJob := range goduler.jobs {
@@ -89,4 +109,36 @@ func (goduler *Goduler) stop() {
 		}
 	}
 
+}
+
+func (goduler *Goduler) start() error {
+
+	jobsData := goduler.redis.HGetAll(context.Background(), "goduler")
+
+	if err := jobsData.Err(); err != nil {
+		return err
+	}
+	result, _ := jobsData.Result()
+
+	for _, value := range result {
+		config := &job.JobConfig{}
+
+		newJob := &job.Job{
+			Config: config,
+		}
+
+		err := json.Unmarshal([]byte(value), config)
+		if err != nil {
+			return err
+		}
+
+		newJob.Config.JobFunction = goduler.definitions[newJob.Config.JobName]
+		goduler.jobs[config.UniqueId] = newJob
+
+		if !newJob.Config.IsDone {
+			newJob.Schedule(config.ScheduleTime, config.JobParameters)
+		}
+	}
+
+	return nil
 }

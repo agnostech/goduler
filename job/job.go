@@ -1,6 +1,9 @@
 package job
 
 import (
+	"context"
+	"encoding/json"
+	"github.com/go-redis/redis/v8"
 	"reflect"
 	"time"
 )
@@ -11,24 +14,27 @@ const (
 )
 
 type JobConfig struct {
-	UniqueId      interface{}
-	JobName       string
-	IsDone        bool
-	JobType       string
-	maxRetries    int
-	retries       int
-	JobFunction   interface{}
-	JobParameters []interface{}
-	oneOffTimer   *time.Timer
-	repeatTimer   *time.Ticker
+	UniqueId      interface{}   `json:"uniqueId"`
+	JobName       string        `json:"jobName"`
+	IsDone        bool          `json:"isDone"`
+	JobType       string        `json:"jobType"`
+	MaxRetries    int           `json:"maxRetries"`
+	Retries       int           `json:"retries"`
+	JobFunction   interface{}   `json:"-"`
+	ScheduleTime  time.Time     `json:"scheduleTime"`
+	JobParameters []interface{} `json:"jobParameters"`
+	oneOffTimer   *time.Timer   `json:"-"`
+	repeatTimer   *time.Ticker  `json:"-"`
 }
 
 type Job struct {
-	Config *JobConfig
+	Config      *JobConfig
+	RedisClient *redis.Client
 }
 
 func (job *Job) Schedule(jobTime time.Time, jobData []interface{}) {
 
+	job.Config.ScheduleTime = jobTime
 	job.Config.JobType = JOB_ONCE
 	job.Config.JobParameters = jobData
 	job.Config.oneOffTimer = time.NewTimer(time.Duration(jobTime.Second()) * time.Second)
@@ -39,6 +45,9 @@ func (job *Job) Schedule(jobTime time.Time, jobData []interface{}) {
 		job.run()
 
 		job.Config.IsDone = true
+
+		//TODO: remove the job from Redis
+
 	}()
 
 }
@@ -67,14 +76,29 @@ func (job *Job) run() {
 
 	defer func() {
 		if err := recover(); err != nil {
-			if job.Config.retries < job.Config.maxRetries {
+			if job.Config.Retries < job.Config.MaxRetries {
 				jobFunction.Call(jobParameters)
-				job.Config.retries++
+				job.Config.Retries++
 			}
 		}
 	}()
 
 	jobFunction.Call(jobParameters)
+}
+
+func (job *Job) Save() error {
+
+	jobJson, err := job.toJSON()
+	if err != nil {
+		return err
+	}
+
+	cmd := job.RedisClient.HSet(context.Background(), "goduler", job.Config.UniqueId, jobJson)
+	if err := cmd.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (job *Job) Cancel() {
@@ -83,4 +107,13 @@ func (job *Job) Cancel() {
 	} else {
 		job.Config.repeatTimer.Stop()
 	}
+}
+
+func (job *Job) toJSON() (string, error) {
+	data, err := json.Marshal(job.Config)
+	if err != nil {
+		return "", err
+	}
+
+	return string(data), nil
 }

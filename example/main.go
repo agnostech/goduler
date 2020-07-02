@@ -16,8 +16,9 @@ func task(name string, pvc string) {
 func main() {
 
 	scheduler, err := goduler.New(&goduler.GodulerConfig{
-		DBUri:  "",
-		DBType: goduler.MongoDB,
+		DBUri:  "redis-15981.c84.us-east-1-2.ec2.cloud.redislabs.com:15981",
+		DBPassword: "zmOg204a6bcIklqTTlEBOnAAyb1imy7V",
+		DBType: goduler.Redis,
 	})
 	if err != nil {
 		print(err)

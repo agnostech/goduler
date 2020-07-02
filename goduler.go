@@ -47,7 +47,7 @@ func (goduler *Goduler) Define(jobName string, jobFunction interface{}) {
 	goduler.definitions[jobName] = jobFunction
 }
 
-func (goduler *Goduler) Schedule(config *job.JobConfig, scheduleTime time.Time, jobData []interface{}) error {
+func (goduler *Goduler) Schedule(config *job.JobConfig, scheduleTime time.Time, jobData ...interface{}) error {
 
 	newJob := &job.Job{
 		Config: config,

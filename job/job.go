@@ -27,7 +27,7 @@ type Job struct {
 	Config *JobConfig
 }
 
-func (job *Job) Schedule(jobTime time.Time, jobData []interface{}) {
+func (job *Job) Schedule(jobTime time.Time, jobData ...interface{}) {
 	job.Config.JobType = JOB_ONCE
 	job.Config.JobParameters = jobData
 	job.Config.oneOffTimer = time.NewTimer(time.Duration(jobTime.Second()) * time.Second)
@@ -40,7 +40,7 @@ func (job *Job) Schedule(jobTime time.Time, jobData []interface{}) {
 
 }
 
-func (job *Job) RepeatEvery(cronTime string, jobData []interface{}) {
+func (job *Job) RepeatEvery(cronTime string, jobData ...interface{}) {
 	job.Config.JobType = JOB_REPEAT
 	job.Config.JobParameters = jobData
 	job.Config.repeatTimer = time.NewTicker(1 * time.Second)

@@ -26,7 +26,7 @@ type JobConfig struct {
 	CronString    string        `json:"cronString"`
 	CronId        cron.EntryID  `json:"cronId"`
 	JobParameters []interface{} `json:"jobParameters"`
-	oneOffTimer   *time.Timer   `json:"-"`
+	OneOffTimer   *time.Timer   `json:"-"`
 }
 
 type Job struct {
@@ -105,7 +105,7 @@ func (job *Job) Save() error {
 		return err
 	}
 
-	cmd := job.RedisClient.HSet(context.Background(), "goduler", job.Config.UniqueId, jobJson)
+	cmd := job.RedisClient.HSet(context.Background(), job.Config.JobName, job.Config.UniqueId, jobJson)
 	if err := cmd.Err(); err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (job *Job) Save() error {
 }
 
 func (job *Job) removeFromDB() error {
-	cmd := job.RedisClient.HDel(context.Background(), "goduler", job.Config.UniqueId)
+	cmd := job.RedisClient.HDel(context.Background(), job.Config.JobName, job.Config.UniqueId)
 	if err := cmd.Err(); err != nil {
 		return err
 	}

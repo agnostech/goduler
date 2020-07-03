@@ -120,6 +120,30 @@ func (goduler *Goduler) Cancel(jobId interface{}) error {
 		return err
 	}
 
+	delete(goduler.jobs, jobId)
+
+	return nil
+}
+
+func (goduler *Goduler) CancelAll(jobName string) error {
+
+	cmd := goduler.redis.Del(context.Background(), jobName)
+
+	if err := cmd.Err(); err != nil {
+		return err
+	}
+
+	for _, savedJob := range goduler.jobs {
+		if savedJob.Config.JobName == jobName {
+			if savedJob.Config.JobType == job.JOB_ONCE {
+				savedJob.Config.OneOffTimer.Stop()
+			} else {
+				goduler.godulerCron.Remove(savedJob.Config.CronId)
+			}
+			delete(goduler.jobs, savedJob.Config.UniqueId)
+		}
+	}
+
 	return nil
 }
 
@@ -150,29 +174,31 @@ func (goduler *Goduler) Stop() error {
 
 func (goduler *Goduler) Start() error {
 
-	jobsData := goduler.redis.HGetAll(context.Background(), "goduler")
+	for key := range goduler.definitions {
+		jobsData := goduler.redis.HGetAll(context.Background(), key)
 
-	if err := jobsData.Err(); err != nil {
-		return err
-	}
-	result, _ := jobsData.Result()
-
-	for _, value := range result {
-		config := &job.JobConfig{}
-
-		if err := json.Unmarshal([]byte(value), config); err != nil {
+		if err := jobsData.Err(); err != nil {
 			return err
 		}
+		result, _ := jobsData.Result()
 
-		newJob := goduler.createJob(config, config.JobParameters)
+		for _, value := range result {
+			config := &job.JobConfig{}
 
-		if newJob.Config.JobType == job.JOB_ONCE {
-			if !newJob.Config.IsDone {
-				newJob.Schedule(config.ScheduleTime, config.JobParameters)
-			}
-		} else {
-			if err := newJob.RepeatEvery(goduler.godulerCron, config.CronString, config.JobParameters); err != nil {
+			if err := json.Unmarshal([]byte(value), config); err != nil {
 				return err
+			}
+
+			newJob := goduler.createJob(config, config.JobParameters)
+
+			if newJob.Config.JobType == job.JOB_ONCE {
+				if !newJob.Config.IsDone {
+					newJob.Schedule(config.ScheduleTime, config.JobParameters)
+				}
+			} else {
+				if err := newJob.RepeatEvery(goduler.godulerCron, config.CronString, config.JobParameters); err != nil {
+					return err
+				}
 			}
 		}
 	}

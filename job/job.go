@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/go-redis/redis/v8"
+	"github.com/robfig/cron/v3"
 	"reflect"
 	"time"
 )
@@ -14,7 +15,7 @@ const (
 )
 
 type JobConfig struct {
-	UniqueId      interface{}   `json:"uniqueId"`
+	UniqueId      string   `json:"uniqueId"`
 	JobName       string        `json:"jobName"`
 	IsDone        bool          `json:"isDone"`
 	JobType       string        `json:"jobType"`
@@ -22,9 +23,10 @@ type JobConfig struct {
 	Retries       int           `json:"retries"`
 	JobFunction   interface{}   `json:"-"`
 	ScheduleTime  time.Time     `json:"scheduleTime"`
+	CronString    string        `json:"cronString"`
+	CronId        cron.EntryID  `json:"cronId"`
 	JobParameters []interface{} `json:"jobParameters"`
 	oneOffTimer   *time.Timer   `json:"-"`
-	repeatTimer   *time.Ticker  `json:"-"`
 }
 
 type Job struct {
@@ -46,23 +48,31 @@ func (job *Job) Schedule(jobTime time.Time, jobData []interface{}) {
 
 		job.Config.IsDone = true
 
-		//TODO: remove the job from Redis
+		if err := job.Save(); err != nil {
+			//TODO: handle error
+		}
 
 	}()
 
 }
 
-func (job *Job) RepeatEvery(cronTime string, jobData []interface{}) {
+func (job *Job) RepeatEvery(cronScheduler *cron.Cron, cronTime string, jobData []interface{}) error {
 	job.Config.JobType = JOB_REPEAT
 	job.Config.JobParameters = jobData
-	job.Config.repeatTimer = time.NewTicker(1 * time.Second)
+	job.Config.CronString = cronTime
 
-	go func() {
-		for timer := range job.Config.repeatTimer.C {
-			_ = timer
-			//TODO: Writing repeating job logic based on the cron time
-		}
-	}()
+	entryId, err := cronScheduler.AddFunc(cronTime, func() {
+		job.run()
+	})
+
+	if err != nil {
+		return err
+	}
+
+	job.Config.CronId = entryId
+
+	return nil
+
 }
 
 func (job *Job) run() {
@@ -79,6 +89,8 @@ func (job *Job) run() {
 			if job.Config.Retries < job.Config.MaxRetries {
 				jobFunction.Call(jobParameters)
 				job.Config.Retries++
+			} else {
+				//TODO: handle error during function execution
 			}
 		}
 	}()
@@ -101,12 +113,27 @@ func (job *Job) Save() error {
 	return nil
 }
 
-func (job *Job) Cancel() {
+func (job *Job) removeFromDB() error {
+	cmd := job.RedisClient.HDel(context.Background(), "goduler", job.Config.UniqueId)
+	if err := cmd.Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (job *Job) Cancel(cronScheduler *cron.Cron) error {
 	if job.Config.JobType == JOB_ONCE {
 		job.Config.oneOffTimer.Stop()
 	} else {
-		job.Config.repeatTimer.Stop()
+		cronScheduler.Remove(job.Config.CronId)
 	}
+
+	if err := job.removeFromDB(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (job *Job) toJSON() (string, error) {
